@@ -1,0 +1,75 @@
+# Production overlay. Use with the base file:
+#
+#   docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml \
+#     up -d qgis-server nginx caddy
+#
+# Always name the services explicitly. The `runner` service in the base file
+# mounts the Docker socket and uses host networking — root-equivalent control of
+# the daemon — and must never start on a public box. It is profile-gated so it
+# will not start by accident, but naming services keeps that guarantee explicit.
+# See deploy/deploy.sh, which refuses to run with --profile tools.
+
+services:
+
+  qgis-server:
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      # Both render limits default to -1 (unlimited): without these a single
+      # public request can ask for a 20000x20000 image and pin a core.
+      QGIS_SERVER_WMS_MAX_WIDTH: ${QGIS_SERVER_WMS_MAX_WIDTH:-4096}
+      QGIS_SERVER_WMS_MAX_HEIGHT: ${QGIS_SERVER_WMS_MAX_HEIGHT:-4096}
+      QGIS_SERVER_API_WFS3_MAX_LIMIT: ${QGIS_SERVER_API_WFS3_MAX_LIMIT:-1000}
+      # Throughput: render in parallel, and trust project-declared extents
+      # rather than recomputing them on every project load.
+      QGIS_SERVER_PARALLEL_RENDERING: "true"
+      QGIS_SERVER_TRUST_LAYER_METADATA: "true"
+      QGIS_SERVER_LOG_LEVEL: ${QGIS_SERVER_LOG_LEVEL:-1}
+    logging: &logging
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  nginx:
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost/endpoints.json"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    logging: *logging
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: qgis_ogc_caddy
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"   # HTTP/3
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # Certificates and ACME account keys. Losing this volume means
+      # re-issuing certificates, so it is the one thing worth backing up.
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:?set SITE_ADDRESS in .env}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in .env}
+      CADDY_TLS: ${CADDY_TLS-}
+    networks:
+      - ogc
+    depends_on:
+      - nginx
+    logging: *logging
+
+volumes:
+  caddy_data:
+  caddy_config:

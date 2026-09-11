@@ -1,0 +1,115 @@
+# Adapted from QGIS upstream .ci/ogc/nginx.conf.
+#
+# One QGIS Server container serves every endpoint; the project is selected per
+# location via the QGIS_PROJECT_FILE fastcgi_param. Unlike upstream (which
+# builds QGIS from source and spawns fcgi on 5555) we target the official
+# image's documented external-proxy port, 9993.
+#
+# Certification endpoints follow the QGIS.org reference-server convention, e.g.
+# /qgisserver_3_44_teamengine — see docs/DEPLOYMENT.md.
+
+# GetMap is CPU-expensive, so the OGC endpoints are the obvious DoS vector on a
+# public box.
+#
+# These defaults are deliberately high. A TEAM Engine conformance run is a
+# legitimate burst client — at 10r/s it drew 180x HTTP 503 and the WMS 1.3.0
+# suite collapsed from 185 passed to 91. Whatever you tune this to, it must
+# never throttle a certification run; that is the one thing this server exists
+# to serve.
+limit_req_zone $binary_remote_addr zone=ogc:10m rate=${OGC_RATE_LIMIT};
+limit_conn_zone $binary_remote_addr zone=ogcconn:10m;
+
+# Public scheme/host, falling back to the direct request when no proxy is in
+# front (i.e. local certification runs, where TEAM Engine talks to nginx
+# directly and $host is the compose service name).
+map $http_x_forwarded_proto $fwd_scheme {
+    default $scheme;
+    "~.+"   $http_x_forwarded_proto;
+}
+map $http_x_forwarded_host $fwd_host {
+    default $host;
+    "~.+"   $http_x_forwarded_host;
+}
+
+# QGIS Server's OGC API Features implementation ignores the forwarded headers
+# and the service-URL overrides alike, building its links from SERVER_NAME plus
+# the HTTPS/SERVER_PORT CGI variables. nginx is not the TLS terminator here, so
+# $https is empty and it would advertise http:// behind Caddy. Derive both from
+# the proxied scheme instead.
+map $fwd_scheme $fwd_https {
+    default "";
+    https   on;
+}
+# Left empty for https on purpose: OGC API Features concatenates host and port
+# unconditionally, so SERVER_PORT=443 yields links like https://host:443/... .
+# WMS omits the default port either way.
+map $fwd_scheme $fwd_port {
+    default 80;
+    https   "";
+}
+
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+
+    root /var/www/html;
+    index index.html;
+
+    server_name _;
+
+    server_tokens off;
+    client_max_body_size 1m;
+
+    # No autoindex: this is public, and the landing page lives here.
+    location / {
+        autoindex off;
+        try_files $uri $uri/ =404;
+    }
+
+    # MetadataURL documents the WMS 1.3.0 suite dereferences.
+    location /wms13/metadata/ {
+        alias /srv/wms13-metadata/;
+        autoindex off;
+    }
+
+    # The landing page is static, but the certification paths are templated.
+    # Publishing them here keeps QGIS_VERSION_SLUG a single source of truth
+    # instead of hardcoding the version into the HTML.
+    location = /endpoints.json {
+        default_type application/json;
+        add_header Access-Control-Allow-Origin *;
+        return 200 '{"slug":"${QGIS_VERSION_SLUG}","wms130":"/qgisserver_${QGIS_VERSION_SLUG}_teamengine","ogcapif":"/certification_ogcapif_qgisserver_${QGIS_VERSION_SLUG}","demoWms":"/demo/wms","demoOgcApi":"/demo/ogcapi"}';
+    }
+
+    # --- Certification endpoints ---------------------------------------------
+
+    location /qgisserver_${QGIS_VERSION_SLUG}_teamengine {
+        limit_req zone=ogc burst=${OGC_RATE_BURST} nodelay;
+        limit_conn ogcconn ${OGC_CONN_LIMIT};
+        include /etc/nginx/conf.d/qgis_fastcgi.inc;
+        fastcgi_param   QGIS_PROJECT_FILE   /data/teamengine_wms_130.qgs;
+    }
+
+    location /certification_ogcapif_qgisserver_${QGIS_VERSION_SLUG} {
+        limit_req zone=ogc burst=${OGC_RATE_BURST} nodelay;
+        limit_conn ogcconn ${OGC_CONN_LIMIT};
+        include /etc/nginx/conf.d/qgis_fastcgi.inc;
+        fastcgi_param   QGIS_PROJECT_FILE   /data/qgis-server-tutorial-data/world.qgs;
+    }
+
+    # --- Demo endpoints (same project, human-facing names) --------------------
+
+    location /demo/wms {
+        limit_req zone=ogc burst=${OGC_RATE_BURST} nodelay;
+        limit_conn ogcconn ${OGC_CONN_LIMIT};
+        include /etc/nginx/conf.d/qgis_fastcgi.inc;
+        fastcgi_param   QGIS_PROJECT_FILE   /data/qgis-server-tutorial-data/world.qgs;
+    }
+
+    location /demo/ogcapi {
+        limit_req zone=ogc burst=${OGC_RATE_BURST} nodelay;
+        limit_conn ogcconn ${OGC_CONN_LIMIT};
+        include /etc/nginx/conf.d/qgis_fastcgi.inc;
+        fastcgi_param   QGIS_PROJECT_FILE   /data/qgis-server-tutorial-data/world.qgs;
+    }
+}

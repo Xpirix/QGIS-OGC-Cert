@@ -1,0 +1,40 @@
+# TLS termination and automatic Let's Encrypt certificates.
+#
+# Caddy handles certificates; nginx keeps doing the FastCGI project routing it
+# is good at and Caddy is not. Configured entirely through environment:
+#
+#   SITE_ADDRESS  the public origin, e.g. ogc.example.org
+#   ACME_EMAIL    contact address for Let's Encrypt
+#   CADDY_TLS     empty in production; "tls internal" for a local dry-run
+#                 using Caddy's own CA, which needs no DNS or public reachability
+
+{
+	email {$ACME_EMAIL}
+}
+
+{$SITE_ADDRESS} {
+	{$CADDY_TLS}
+
+	encode zstd gzip
+
+	# QGIS Server builds the URLs it advertises from these headers
+	# (X-Forwarded-Proto / X-Forwarded-Host sit near the top of its precedence
+	# chain). Without them it falls back to SERVER_NAME and advertises
+	# http://nginx/... — unreachable, and enough to truncate an OGC API run.
+	reverse_proxy nginx:80 {
+		header_up X-Forwarded-Proto {scheme}
+		header_up X-Forwarded-Host {host}
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}

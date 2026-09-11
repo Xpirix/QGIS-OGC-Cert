@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QGIS Server — OGC reference &amp; demo server</title>
+<style>
+  :root {
+    --bg: #0f1419; --panel: #171d24; --line: #2a333d;
+    --ink: #e6edf3; --muted: #9aa7b4; --accent: #589632; --accent-soft: #6fbf3f;
+    --focus: #7cc4ff;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f6f8fa; --panel: #fff; --line: #d8dee4;
+      --ink: #1c2128; --muted: #57606a; --accent: #3d6b22; --accent-soft: #589632;
+      --focus: #0969da;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; display: flex; flex-direction: column;
+    background: var(--bg); color: var(--ink);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  a { color: var(--accent-soft); }
+  a:focus-visible, summary:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 3px; }
+  header, footer { padding: 1.5rem clamp(1rem, 4vw, 3rem); border-color: var(--line); }
+  header { border-bottom: 1px solid var(--line); }
+  footer { border-top: 1px solid var(--line); color: var(--muted); font-size: .9rem; margin-top: auto; }
+  header h1 { margin: 0 0 .25rem; font-size: clamp(1.3rem, 3vw, 1.8rem); }
+  header p { margin: 0; color: var(--muted); }
+  main { flex: 1; padding: clamp(1rem, 4vw, 3rem); max-width: 1100px; width: 100%; margin: 0 auto; }
+  h2 { font-size: 1.1rem; margin: 2.5rem 0 .25rem; }
+  h2:first-of-type { margin-top: 0; }
+  .lede { color: var(--muted); margin: 0 0 1rem; }
+  .grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+  .card {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 10px; padding: 1rem 1.1rem;
+  }
+  .card h3 { margin: 0 0 .4rem; font-size: .95rem; }
+  .card p { margin: 0 0 .75rem; color: var(--muted); font-size: .9rem; }
+  .card a { display: block; margin: .3rem 0; font-size: .9rem; word-break: break-word; }
+  code, .mono {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-size: .85em;
+  }
+  .badge {
+    display: inline-block; padding: .1rem .5rem; border-radius: 999px;
+    background: var(--accent); color: #fff; font-size: .75rem; vertical-align: middle;
+  }
+  figure { margin: 0; }
+  figure img {
+    width: 100%; height: auto; border: 1px solid var(--line);
+    border-radius: 8px; background: #fff; display: block;
+  }
+  figcaption { color: var(--muted); font-size: .85rem; margin-top: .4rem; }
+  .note {
+    border-left: 3px solid var(--accent); padding: .6rem .9rem;
+    background: var(--panel); border-radius: 0 8px 8px 0; color: var(--muted); font-size: .9rem;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>QGIS Server <span class="badge" id="slug-badge">…</span></h1>
+  <p>OGC certification reference server and live demo</p>
+</header>
+
+<main>
+  <h2>Certification endpoints</h2>
+  <p class="lede">
+    Version-pinned endpoints the OGC
+    <a href="https://cite.opengeospatial.org/teamengine/">TEAM Engine</a> tests against,
+    following the QGIS.org reference-server naming convention.
+  </p>
+  <div class="grid">
+    <div class="card">
+      <h3>WMS 1.3.0</h3>
+      <p>CITE test dataset — the suite QGIS Server is formally certified against.</p>
+      <a id="wms-caps" href="#">GetCapabilities</a>
+    </div>
+    <div class="card">
+      <h3>OGC API — Features 1.0</h3>
+      <p>Landing page, conformance declaration and feature collections.</p>
+      <a id="apif-landing" href="#">Landing page (JSON)</a>
+      <a id="apif-conf" href="#">Conformance</a>
+    </div>
+  </div>
+
+  <h2>Explore the data</h2>
+  <p class="lede">
+    QGIS Server ships a browsable HTML interface for OGC API — Features. No client needed.
+  </p>
+  <div class="grid">
+    <div class="card">
+      <h3>Browse collections</h3>
+      <p>Built-in HTML interface, served directly by QGIS Server.</p>
+      <a id="demo-html" href="#">Collections browser</a>
+      <a id="demo-landing" href="#">Landing page</a>
+    </div>
+    <div class="card">
+      <h3>Other OGC services</h3>
+      <p>The same project published through three protocols.</p>
+      <a id="demo-wms-caps" href="#">WMS GetCapabilities</a>
+      <a id="demo-wfs-caps" href="#">WFS GetCapabilities</a>
+      <a id="demo-wmts-caps" href="#">WMTS GetCapabilities</a>
+    </div>
+  </div>
+
+  <h2>Server-side styling</h2>
+  <p class="lede">
+    Two layers, four named styles, all rendered by the server. Change
+    <code>LAYERS</code> and <code>STYLES</code> in the URL to switch between them.
+  </p>
+  <div class="grid" id="styles"></div>
+
+  <h2>Running the tests yourself</h2>
+  <p class="note">
+    These endpoints are the <em>subject</em> of certification, not the source of it.
+    A certifiable report is produced by OGC's own TEAM Engine during a registered session —
+    see <code>docs/DEPLOYMENT.md</code> in the repository.
+  </p>
+</main>
+
+<footer>
+  Made with 💗 by <a href="https://kartoza.com">Kartoza</a> |
+  <a href="#" id="donate">Donate!</a> |
+  <a href="#" id="github">GitHub</a>
+</footer>
+
+<script>
+// Endpoint paths are templated by nginx from QGIS_VERSION_SLUG, so the page
+// reads them at runtime rather than hardcoding a QGIS version into the HTML.
+(async () => {
+  const set = (id, href, text) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.href = href;
+    if (text) el.textContent = text;
+  };
+
+  let e;
+  try {
+    e = await (await fetch('endpoints.json')).json();
+  } catch (err) {
+    document.getElementById('slug-badge').textContent = 'unavailable';
+    return;
+  }
+
+  document.getElementById('slug-badge').textContent = e.slug;
+
+  const WMS_CAPS = '?SERVICE=WMS&REQUEST=GetCapabilities';
+  set('wms-caps', e.wms130 + WMS_CAPS);
+  set('apif-landing', e.ogcapif + '/wfs3?f=json');
+  set('apif-conf', e.ogcapif + '/wfs3/conformance?f=json');
+
+  set('demo-html', e.demoOgcApi + '/wfs3/collections.html');
+  set('demo-landing', e.demoOgcApi + '/wfs3.html');
+  set('demo-wms-caps', e.demoWms + WMS_CAPS);
+  set('demo-wfs-caps', e.demoWms + '?SERVICE=WFS&REQUEST=GetCapabilities');
+  set('demo-wmts-caps', e.demoWms + '?SERVICE=WMTS&REQUEST=GetCapabilities');
+
+  // Layer/style pairs as the project actually publishes them: `countries` and
+  // `countries_shapeburst` are separate layers, each with its own named styles.
+  const styles = [
+    ['countries', 'classified_by_name', 'countries — classified by name'],
+    ['countries', 'classified_by_population', 'countries — classified by population'],
+    ['countries_shapeburst', 'blue', 'countries_shapeburst — blue'],
+    ['countries_shapeburst', 'green', 'countries_shapeburst — green'],
+  ];
+  const frag = document.createDocumentFragment();
+  for (const [layer, style, label] of styles) {
+    const url = e.demoWms + '?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap'
+      + '&LAYERS=' + layer + '&STYLES=' + style + '&CRS=EPSG:4326'
+      + '&BBOX=-90,-180,90,180&WIDTH=600&HEIGHT=300&FORMAT=image/png';
+    const fig = document.createElement('figure');
+    fig.className = 'card';
+    const img = document.createElement('img');
+    img.src = url;
+    img.loading = 'lazy';
+    img.alt = 'World map: ' + label;
+    const cap = document.createElement('figcaption');
+    const a = document.createElement('a');
+    a.href = url;
+    a.textContent = label;
+    cap.appendChild(a);
+    fig.append(img, cap);
+    frag.appendChild(fig);
+  }
+  document.getElementById('styles').appendChild(frag);
+})();
+</script>
+</body>
+</html>

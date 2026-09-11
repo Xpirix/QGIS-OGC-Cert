@@ -1,0 +1,88 @@
+services:
+
+  qgis-server:
+    image: qgis/qgis-server:${QGIS_TAG:-ltr}
+    container_name: qgis_ogc_server
+    volumes:
+      - ./data:/data:ro
+    networks:
+      - ogc
+    # The official image's entrypoint starts Xvfb and its own nginx; we leave
+    # that alone and talk to the documented FastCGI backend on 9993 instead.
+    environment:
+      QGIS_SERVER_LOG_STDERR: 1
+      QGIS_SERVER_LOG_LEVEL: ${QGIS_SERVER_LOG_LEVEL:-2}
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: qgis_ogc_nginx
+    ports:
+      # Loopback by default: on a public box Caddy fronts this, and nothing
+      # should reach nginx directly. Compose *appends* `ports` when overlays are
+      # merged and cannot remove them, so this has to be parameterised here
+      # rather than overridden in deploy/docker-compose.prod.yml.
+      # Harmless locally — TEAM Engine reaches nginx over the ogc-cert network,
+      # not this published port.
+      - "${HTTP_BIND:-127.0.0.1}:${HTTP_PORT:-8089}:80"
+    networks:
+      - ogc
+    volumes:
+      - ./nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ./nginx/qgis_fastcgi.inc.template:/etc/nginx/templates/qgis_fastcgi.inc.template:ro
+      # Landing page (the docroot).
+      - ./www:/var/www/html:ro
+      # MetadataURL documents the WMS 1.3.0 suite dereferences. Kept outside the
+      # docroot and exposed via an nginx alias: nesting it under a read-only
+      # /var/www/html mount fails, because Docker cannot create the mountpoint.
+      - ./data/metadata:/srv/wms13-metadata:ro
+    environment:
+      # QGIS Server builds the absolute URLs it advertises (OnlineResource,
+      # OGC API links) from SERVER_NAME. It must be the host the test suite
+      # uses, or the self-links point somewhere the suite won't follow — with
+      # $$server_addr they come back as a bare container IP and the OGC API
+      # Features run stops after the landing-page tests.
+      OGC_PUBLIC_HOST: ${OGC_PUBLIC_HOST:-nginx}
+      # Names the version-pinned certification endpoints, mirroring the
+      # QGIS.org reference server (e.g. /qgisserver_3_44_teamengine).
+      QGIS_VERSION_SLUG: ${QGIS_VERSION_SLUG:-ltr}
+      # Must stay well above what a TEAM Engine conformance run demands.
+      OGC_RATE_LIMIT: ${OGC_RATE_LIMIT:-100r/s}
+      OGC_RATE_BURST: ${OGC_RATE_BURST:-200}
+      OGC_CONN_LIMIT: ${OGC_CONN_LIMIT:-50}
+      # Only substitute our own variables; leave nginx's $$request_method etc.
+      NGINX_ENVSUBST_FILTER: "(OGC_PUBLIC_HOST|QGIS_VERSION_SLUG|OGC_RATE_LIMIT|OGC_RATE_BURST|OGC_CONN_LIMIT)"
+    depends_on:
+      - qgis-server
+
+  # Runs pyogctest, which spawns and tears down its own TEAM Engine container
+  # (ogccite/ets-wms13, ogccite/ets-ogcapi-features10) for each suite. That is
+  # why there are no teamengine services here: pyogctest owns their lifecycle,
+  # and pins the image versions QGIS is certified against.
+  #
+  # network_mode: host is required — pyogctest always talks to TEAM Engine on
+  # localhost:<published port>, never by container name.
+  #
+  # NOTE: mounting the Docker socket grants this container root-equivalent
+  # control of the host Docker daemon. That is the tradeoff pyogctest's design
+  # imposes; it only ever runs the pinned OGC images above.
+  runner:
+    build:
+      context: ./runner
+    image: qgis-ogc-cert/runner:local
+    profiles: [tools]
+    network_mode: host
+    volumes:
+      - .:/work
+      # Path differs between rootful and rootless Docker; scripts/lib.sh
+      # detects it from the active docker context.
+      - ${DOCKER_SOCK:-/var/run/docker.sock}:/var/run/docker.sock
+    environment:
+      DOCKER_HOST: unix:///var/run/docker.sock
+    working_dir: /work
+
+networks:
+  ogc:
+    # Fixed name so `pyogctest -n ogc-cert` can attach its TEAM Engine
+    # container here and reach the server as http://nginx/...
+    name: ogc-cert
+    driver: bridge

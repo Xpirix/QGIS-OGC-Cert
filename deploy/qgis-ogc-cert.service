@@ -1,0 +1,36 @@
+# QGIS-OGC-Cert — OGC certification reference + demo server.
+#
+# Install:
+#   sudo cp deploy/qgis-ogc-cert.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now qgis-ogc-cert
+#
+# Adjust User= and WorkingDirectory= to match the deploy account and checkout.
+# Note that Docker group membership is effectively root on the host; treat the
+# deploy user accordingly.
+
+[Unit]
+Description=QGIS Server OGC certification reference and demo server
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=qgis
+WorkingDirectory=/opt/qgis-ogc-cert
+
+# Services are named explicitly. The `runner` service mounts the Docker socket
+# and must never start here; listing services by name means it cannot be pulled
+# in implicitly.
+ExecStart=/usr/bin/docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml up -d --remove-orphans qgis-server nginx caddy
+ExecStop=/usr/bin/docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml stop qgis-server nginx caddy
+ExecReload=/usr/bin/docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml up -d --force-recreate qgis-server nginx caddy
+
+TimeoutStartSec=0
+Restart=on-failure
+RestartSec=30s
+
+[Install]
+WantedBy=multi-user.target

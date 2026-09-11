@@ -1,0 +1,39 @@
+# Shared FastCGI wiring for every QGIS Server location.
+#
+# Included by default.conf.template; the only thing that differs per endpoint is
+# QGIS_PROJECT_FILE, which each location sets after the include.
+#
+# Named .inc rather than .conf on purpose: the nginx entrypoint renders
+# /etc/nginx/templates/*.template into /etc/nginx/conf.d/, and nginx.conf
+# auto-includes conf.d/*.conf — a bare snippet picked up at top level would fail
+# to parse.
+
+fastcgi_pass qgis-server:9993;
+
+add_header Access-Control-Allow-Origin *;
+add_header 'Access-Control-Allow-Headers' 'Authorization,Content-Type,Accept,Origin,X-Requested-With';
+
+fastcgi_param   PATH_INFO           $fastcgi_script_name;
+fastcgi_param   REQUEST_METHOD      $request_method;
+fastcgi_param   QUERY_STRING        $query_string;
+fastcgi_param   CONTENT_TYPE        $content_type;
+fastcgi_param   CONTENT_LENGTH      $content_length;
+fastcgi_param   SERVER_PROTOCOL     $server_protocol;
+fastcgi_param   REQUEST_URI         $request_uri;
+fastcgi_param   HTTPS               $fwd_https if_not_empty;
+fastcgi_param   SERVER_PORT         $fwd_port;
+
+# The host QGIS Server advertises in GetCapabilities and OGC API links.
+#
+# Static rather than derived from the request Host, so a spoofed Host header
+# cannot rewrite the URLs we publish. Set OGC_PUBLIC_HOST to the public domain
+# in production; locally it is the compose service name TEAM Engine resolves.
+#
+# Behind a proxy this is what OGC API Features uses: unlike WMS it honours
+# neither X-Forwarded-Proto/Host nor QGIS_SERVER_SERVICE_URL / X-Qgis-Service-Url
+# (both verified inert against QGIS 3.x LTR), and builds its links from
+# SERVER_NAME plus HTTPS/SERVER_PORT above.
+fastcgi_param   SERVER_NAME         ${OGC_PUBLIC_HOST};
+
+# Bound the damage a single expensive render can do.
+fastcgi_read_timeout 60s;
