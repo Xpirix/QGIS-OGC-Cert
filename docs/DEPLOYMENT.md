@@ -99,6 +99,46 @@ No user data is stored; `data/` is fully reproducible via `./scripts/bootstrap.s
 keeping: `.env`, and the `caddy_data` volume (ACME account key and certificates — losing
 it forces re-issuance and can hit Let's Encrypt rate limits).
 
+## Checking OGC's TEAM Engine can actually use your endpoint
+
+Running `make all` locally proves a lot: it drives the **same ETS images** OGC uses
+(`ogccite/ets-wms13`, `ogccite/ets-ogcapi-features10`) against the same projects. A green
+run is the strongest pre-flight signal available.
+
+What it cannot prove is everything about the *network path*. Before booking an OGC
+session, verify these **from a machine other than the server** — OGC's TEAM Engine is an
+external client:
+
+```bash
+D=ogc.example.org
+
+# 1. Endpoints reachable over HTTPS with a publicly trusted certificate.
+#    No -k: OGC's Java TEAM Engine validates against its truststore, so a
+#    self-signed or internal CA certificate will fail where curl -k succeeds.
+curl -sS -o /dev/null -w '%{http_code}\n' \
+  "https://$D/qgisserver_3_44_teamengine?SERVICE=WMS&REQUEST=GetCapabilities"
+
+# 2. Every advertised URL is https and on the public domain — no http://,
+#    no internal hostname, no container IP.
+curl -sS "https://$D/qgisserver_3_44_teamengine?SERVICE=WMS&REQUEST=GetCapabilities" \
+  | grep -oE 'xlink:href="[^"]*"' | sort -u
+
+# 3. MetadataURLs resolve. The WMS 1.3.0 suite dereferences every one of them.
+curl -sS -o /dev/null -w '%{http_code}\n' "https://$D/wms13/metadata/Streams.xml"
+
+# 4. OGC API Features links point at the public origin.
+curl -sS "https://$D/certification_ogcapif_qgisserver_3_44/wfs3?f=json" | head -c 200
+```
+
+Set `OGC_PUBLIC_SCHEME=https` in `.env` and re-run `./scripts/bootstrap.sh` when
+deploying behind TLS. It rewrites the MetadataURLs into the project; left at `http` they
+are advertised as `http://` inside an otherwise-https capabilities document, resolving
+only via a redirect — and failing outright if port 80 is closed.
+
+Note the ETS images pinned by pyogctest are not necessarily the exact build running on
+`cite.opengeospatial.org`. A green local run makes a green OGC session very likely, not
+certain.
+
 ## Getting certified
 
 Per the QGIS wiki, once the server is live:

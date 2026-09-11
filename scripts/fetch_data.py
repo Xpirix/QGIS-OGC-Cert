@@ -74,24 +74,28 @@ def download(name: str, expected_sha256: str, base: str) -> bytes:
     return blob
 
 
-def set_metadata_host(project: Path, host: str) -> None:
-    """Point the project's MetadataURLs at the host TEAM Engine will use.
+def set_metadata_host(project: Path, host: str, scheme: str = "http") -> None:
+    """Point the project's MetadataURLs at the origin TEAM Engine will use.
 
     The WMS 1.3.0 suite dereferences every MetadataURL, so they must resolve
-    from inside the ETS container.
+    from wherever the suite runs.
+
+    The scheme matters: on an HTTPS deployment these must be https too, or
+    GetCapabilities advertises a mix of schemes and the documents only resolve
+    via an http->https redirect — which breaks outright if port 80 is closed.
     """
     text = project.read_text(encoding="utf-8")
     patched = re.sub(
-        r"http://[^/\"'<> ]+/wms13/metadata",
-        f"http://{host}/wms13/metadata",
+        r"https?://[^/\"'<> ]+/wms13/metadata",
+        f"{scheme}://{host}/wms13/metadata",
         text,
     )
     if patched != text:
         project.write_text(patched, encoding="utf-8")
-    log(f"MetadataURLs -> http://{host}/wms13/metadata")
+    log(f"MetadataURLs -> {scheme}://{host}/wms13/metadata")
 
 
-def fetch_wms(host: str) -> None:
+def fetch_wms(host: str, scheme: str = "http") -> None:
     project = DATA / "teamengine_wms_130.qgs"
     # data/metadata is bind-mounted by compose, which creates it empty if it is
     # missing — so its mere existence proves nothing. Check for real content.
@@ -110,7 +114,7 @@ def fetch_wms(host: str) -> None:
                 PYOGCTEST_RAW,
             )
         )
-    set_metadata_host(project, host)
+    set_metadata_host(project, host, scheme)
 
 
 def fetch_training() -> None:
@@ -125,8 +129,9 @@ def fetch_training() -> None:
 
 def main() -> int:
     host = sys.argv[1] if len(sys.argv) > 1 else "nginx"
+    scheme = sys.argv[2] if len(sys.argv) > 2 else "http"
     DATA.mkdir(parents=True, exist_ok=True)
-    fetch_wms(host)
+    fetch_wms(host, scheme)
     fetch_training()
     log("done")
     return 0
