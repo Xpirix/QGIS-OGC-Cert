@@ -18,7 +18,7 @@ This deploys that server — certification endpoints for OGC, and a landing page
 
 ```bash
 sudo mkdir -p /opt/qgis-ogc-cert && sudo chown "$USER" /opt/qgis-ogc-cert
-git clone <this-repo> /opt/qgis-ogc-cert && cd /opt/qgis-ogc-cert
+git clone https://github.com/Xpirix/QGIS-OGC-Cert.git /opt/qgis-ogc-cert && cd /opt/qgis-ogc-cert
 
 cp deploy/.env.prod.example .env
 $EDITOR .env          # SITE_ADDRESS, ACME_EMAIL, OGC_PUBLIC_HOST, QGIS_TAG, QGIS_VERSION_SLUG
